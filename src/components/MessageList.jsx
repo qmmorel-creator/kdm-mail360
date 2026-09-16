@@ -34,8 +34,18 @@ export default function MessageList({
   searchQuery, onSearchChange, onSubmitSearch,
   tab, onTabChange, unreadCount, onRefresh,
   selectedIds, onToggleSelect, onToggleStar, onQuickAction,
-  activeFolderLabel,
+  activeFolderLabel, labels, filters, onFiltersChange, onSelectLabel,
 }) {
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
+  const labelById = React.useMemo(() => Object.fromEntries((labels || []).map((l) => [l.id, l])), [labels])
+  const activeFilters = [
+    filters.labelId && { key: 'labelId', label: labelById[filters.labelId]?.name || filters.labelId, value: '' },
+    filters.unread && { key: 'unread', label: filters.unread === 'unread' ? 'Non lus' : 'Lus', value: '' },
+    filters.attachment && { key: 'attachment', label: 'Avec pièce jointe', value: false },
+    filters.starred && { key: 'starred', label: 'Suivis', value: false },
+    filters.after && { key: 'after', label: `Depuis ${filters.after}`, value: '' },
+    filters.before && { key: 'before', label: `Avant ${filters.before}`, value: '' },
+  ].filter(Boolean)
   const groups = []
   let lastLabel = null
   for (const t of threads) {
@@ -74,10 +84,27 @@ export default function MessageList({
             {t.id === 'priority' && unreadCount > 0 && <span className="tab-btn__badge">{unreadCount}</span>}
           </button>
         ))}
-        <button className="toolbar__ghost" style={{ marginLeft: 'auto' }} aria-label="Filtres avancés" title="Filtres avancés">
+        <button className={`toolbar__ghost${filtersOpen ? ' is-active' : ''}`} style={{ marginLeft: 'auto' }} aria-label="Filtres avancés" title="Filtres avancés" onClick={() => setFiltersOpen((v) => !v)} aria-expanded={filtersOpen}>
           <IconFilter />
         </button>
       </div>
+
+      {filtersOpen && (
+        <div className="advanced-filters">
+          <select value={filters.labelId} onChange={(e) => onFiltersChange({ ...filters, labelId: e.target.value })} aria-label="Filtrer par libellé">
+            <option value="">Tous les libellés</option>
+            {(labels || []).map((l) => <option value={l.id} key={l.id}>{l.name}</option>)}
+          </select>
+          <select value={filters.unread} onChange={(e) => onFiltersChange({ ...filters, unread: e.target.value })} aria-label="Filtrer par état de lecture">
+            <option value="">Lus et non lus</option><option value="unread">Non lus</option><option value="read">Lus</option>
+          </select>
+          <label><input type="checkbox" checked={filters.attachment} onChange={(e) => onFiltersChange({ ...filters, attachment: e.target.checked })} /> Pièce jointe</label>
+          <label><input type="checkbox" checked={filters.starred} onChange={(e) => onFiltersChange({ ...filters, starred: e.target.checked })} /> Suivis</label>
+          <label>Depuis <input type="date" value={filters.after} onChange={(e) => onFiltersChange({ ...filters, after: e.target.value })} /></label>
+          <label>Avant <input type="date" value={filters.before} onChange={(e) => onFiltersChange({ ...filters, before: e.target.value })} /></label>
+        </div>
+      )}
+      {activeFilters.length > 0 && <div className="active-filters">{activeFilters.map((f) => <button key={f.key} onClick={() => onFiltersChange({ ...filters, [f.key]: f.value })}>{f.label} ×</button>)}<button className="clear-filters" onClick={() => onFiltersChange({ labelId: '', unread: '', attachment: false, starred: false, after: '', before: '' })}>Tout effacer</button></div>}
 
       <div className="message-pane__toolbar">
         <div className="toolbar__left">
@@ -153,7 +180,7 @@ export default function MessageList({
                     {t.labels?.length > 0 && (
                       <div className="message-row__meta-row">
                         {t.labels.map((lid) => (
-                          <span key={lid} className="chip" style={{ background: 'var(--c-accent-soft)', color: 'var(--c-accent)' }}>{lid}</span>
+                          <button key={lid} className="chip chip-button" style={{ background: 'var(--c-accent-soft)', color: 'var(--c-accent)' }} onClick={(e) => { e.stopPropagation(); onSelectLabel(lid) }}>{labelById[lid]?.name || lid}</button>
                         ))}
                       </div>
                     )}

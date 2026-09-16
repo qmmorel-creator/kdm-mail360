@@ -158,13 +158,20 @@ export class GmailAdapter {
     }
   }
 
-  async listThreads({ folder = 'inbox', query = '', tab = 'priority', pageToken } = {}) {
+  async listThreads({ folder = 'inbox', query = '', tab = 'priority', filters = {}, pageToken } = {}) {
     const labelId = FOLDER_TO_LABEL[folder]
     let q = query || ''
     if (tab === 'unread') q += ' is:unread'
     if (tab === 'attachments') q += ' has:attachment'
+    if (filters.unread === 'unread') q += ' is:unread'
+    if (filters.unread === 'read') q += ' is:read'
+    if (filters.attachment) q += ' has:attachment'
+    if (filters.starred) q += ' is:starred'
+    if (filters.after) q += ` after:${filters.after.replaceAll('-', '/')}`
+    if (filters.before) q += ` before:${filters.before.replaceAll('-', '/')}`
     const params = new URLSearchParams({ maxResults: '25' })
     if (labelId) params.set('labelIds', labelId)
+    if (filters.labelId) params.append('labelIds', filters.labelId)
     if (folder === 'archive') q += ' -in:inbox -in:trash -in:spam'
     if (q.trim()) params.set('q', q.trim())
     if (pageToken) params.set('pageToken', pageToken)
@@ -199,7 +206,7 @@ export class GmailAdapter {
       preview: last.snippet || '',
       date: new Date(parseInt(last.internalDate, 10)).toISOString(),
       messageCount: t.messages.length,
-      labels: (last.labelIds || []).filter((l) => !['INBOX', 'UNREAD', 'STARRED', 'SENT', 'IMPORTANT', 'CATEGORY_PERSONAL'].includes(l)),
+      labels: (last.labelIds || []).filter((l) => this._labelCache?.some((label) => label.id === l)),
       attachments: hasAttachment ? [{ name: '', size: '', type: 'doc' }] : [],
     }
   }
@@ -223,7 +230,7 @@ export class GmailAdapter {
       preview: last.snippet || '',
       date: new Date(parseInt(last.internalDate, 10)).toISOString(),
       messageCount: t.messages.length,
-      labels: [],
+      labels: (last.labelIds || []).filter((l) => this._labelCache?.some((label) => label.id === l)),
       attachments,
       bodyHtml: html || null,
       body: text ? text.split(/\n{2,}/) : (html ? null : [last.snippet || '']),
@@ -278,6 +285,10 @@ export class GmailAdapter {
       body: JSON.stringify({ raw, threadId }),
     })
     return { ok: true, id: res.id }
+  }
+
+  async sendMessage({ to, subject, body }) {
+    return this.sendReply({ to, subject, body })
   }
 
   _buildRawMessage({ to, subject, body }) {

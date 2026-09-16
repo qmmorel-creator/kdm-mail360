@@ -25,8 +25,9 @@ function AttachmentCard({ file }) {
 
 export default function ReadingPane({
   thread, loading, mode, onBack, onQuickAction, onToggleStar,
-  onSend, contextOpen, onOpenContext,
+  onSend, contextOpen, onOpenContext, labels = [], onSelectLabel,
 }) {
+  const labelById = Object.fromEntries(labels.map((l) => [l.id, l.name]))
   const [replyText, setReplyText] = useState('')
   const [confirmSend, setConfirmSend] = useState(false)
 
@@ -82,7 +83,7 @@ export default function ReadingPane({
           <div className="rp-labels">
             <span className="rp-folder-select">Boîte de réception <span aria-hidden="true">▾</span></span>
             {thread.labels?.map((l) => (
-              <span key={l} className="chip" style={{ background: 'var(--c-accent-soft)', color: 'var(--c-accent)' }}>{l}</span>
+              <button key={l} className="chip chip-button" style={{ background: 'var(--c-accent-soft)', color: 'var(--c-accent)' }} onClick={() => onSelectLabel(l)}>{labelById[l] || l}</button>
             ))}
           </div>
           <h2 className="rp-subject">{thread.subject}</h2>

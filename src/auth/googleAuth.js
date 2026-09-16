@@ -6,9 +6,9 @@
 // Netlify (le connecteur Gmail de Claude ne fonctionne que dans les
 // conversations Claude — il ne peut pas être embarqué dans ce site).
 //
-// Le jeton d'accès obtenu n'est JAMAIS persisté (pas de localStorage) :
-// il reste en mémoire le temps de la session, et une reconnexion est
-// nécessaire après rechargement de la page.
+// Le jeton d'accès obtenu n'est JAMAIS persisté. Le Client ID public l'est,
+// puis GIS est sollicité sans consentement au rechargement afin de restaurer
+// la session Google existante quand le navigateur l'autorise.
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
@@ -27,7 +27,7 @@ export function isGisLoaded() {
 
 export function getStoredClientId() {
   try {
-    return sessionStorage.getItem('mail360_client_id') || ''
+    return localStorage.getItem('mail360_client_id') || ''
   } catch {
     return ''
   }
@@ -35,7 +35,7 @@ export function getStoredClientId() {
 
 export function setStoredClientId(clientId) {
   try {
-    sessionStorage.setItem('mail360_client_id', clientId)
+    localStorage.setItem('mail360_client_id', clientId)
   } catch {
     // ignore — sessionStorage indisponible
   }
@@ -45,7 +45,7 @@ export function getAccessToken() {
   return currentToken
 }
 
-export function requestAccessToken(clientId) {
+export function requestAccessToken(clientId, { silent = false } = {}) {
   return new Promise((resolve, reject) => {
     if (!isGisLoaded()) {
       reject(new Error('Google Identity Services n\u2019a pas pu se charger (bloqué par le réseau ou un bloqueur de scripts).'))
@@ -71,7 +71,7 @@ export function requestAccessToken(clientId) {
       currentToken = resp.access_token
       resolve(resp.access_token)
     }
-    tokenClient.requestAccessToken({ prompt: currentToken ? '' : 'consent' })
+    tokenClient.requestAccessToken({ prompt: silent || currentToken ? '' : 'consent' })
   })
 }
 
