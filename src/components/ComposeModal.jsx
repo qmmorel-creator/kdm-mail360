@@ -1,15 +1,17 @@
 import React, { useState } from 'react'
+import AttachmentPicker from './AttachmentPicker'
 
 export default function ComposeModal({ onClose, onSend, sending }) {
   const [to, setTo] = useState('')
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
+  const [attachments, setAttachments] = useState([])
   const valid = to.trim() && body.trim()
 
   const submit = async (e) => {
     e.preventDefault()
     if (!valid || sending) return
-    await onSend({ to: to.trim(), subject: subject.trim(), body })
+    await onSend({ to: to.trim(), subject: subject.trim(), body, attachments })
   }
 
   return (
@@ -19,6 +21,7 @@ export default function ComposeModal({ onClose, onSend, sending }) {
         <label>À<input type="email" value={to} onChange={(e) => setTo(e.target.value)} required autoFocus /></label>
         <label>Objet<input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} /></label>
         <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="Écrivez votre message…" required />
+        <AttachmentPicker files={attachments} onChange={setAttachments} />
         <footer><button type="button" className="btn-secondary" onClick={onClose}>Annuler</button><button className="btn-primary" disabled={!valid || sending}>{sending ? 'Envoi…' : 'Envoyer'}</button></footer>
       </form>
     </div>
