@@ -169,6 +169,10 @@ export class GmailAdapter {
     if (filters.starred) q += ' is:starred'
     if (filters.after) q += ` after:${filters.after.replaceAll('-', '/')}`
     if (filters.before) q += ` before:${filters.before.replaceAll('-', '/')}`
+    if (filters.direction === 'sent') q += ' in:sent'
+    if (filters.direction === 'received') q += ' -in:sent'
+    if (filters.recipientMode === 'cc') q += ' cc:me'
+    if (filters.recipientMode === 'to') q += ' to:me'
     const params = new URLSearchParams({ maxResults: '25' })
     if (labelId) params.set('labelIds', labelId)
     if (filters.labelId) params.append('labelIds', filters.labelId)
@@ -182,7 +186,7 @@ export class GmailAdapter {
     // Charge chaque fil en mode "metadata" pour construire la liste (léger, pas le corps complet)
     const threads = await Promise.all(
       list.threads.map((t) =>
-        this._fetch(`/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=Date`)
+        this._fetch(`/threads/${t.id}?format=metadata&metadataHeaders=Subject&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Date`)
       )
     )
     return threads.map((t) => this._threadToSummary(t))
@@ -192,6 +196,8 @@ export class GmailAdapter {
     const last = t.messages[t.messages.length - 1]
     const headers = last.payload.headers
     const from = parseFrom(headerValue(headers, 'From'))
+    const to = splitAddresses(headerValue(headers, 'To'))
+    const cc = splitAddresses(headerValue(headers, 'Cc'))
     const unread = t.messages.some((m) => m.labelIds?.includes('UNREAD'))
     const starred = t.messages.some((m) => m.labelIds?.includes('STARRED'))
     const hasAttachment = t.messages.some((m) => (m.payload.parts || []).some((p) => p.filename))
@@ -201,7 +207,9 @@ export class GmailAdapter {
       starred,
       unread,
       from,
-      to: [],
+      to,
+      cc,
+      direction: last.labelIds?.includes('SENT') ? 'sent' : 'received',
       subject: headerValue(headers, 'Subject') || '(sans objet)',
       preview: last.snippet || '',
       date: new Date(parseInt(last.internalDate, 10)).toISOString(),
@@ -226,6 +234,8 @@ export class GmailAdapter {
       unread: last.labelIds?.includes('UNREAD'),
       from,
       to: (headerValue(headers, 'To') || '').split(',').map((s) => s.trim()).filter(Boolean),
+      cc: splitAddresses(headerValue(headers, 'Cc')),
+      direction: last.labelIds?.includes('SENT') ? 'sent' : 'received',
       subject: headerValue(headers, 'Subject') || '(sans objet)',
       preview: last.snippet || '',
       date: new Date(parseInt(last.internalDate, 10)).toISOString(),
@@ -269,8 +279,8 @@ export class GmailAdapter {
     return { ok: true }
   }
 
-  async createDraft({ to, subject, body, threadId }) {
-    const raw = this._buildRawMessage({ to, subject, body, threadId })
+  async createDraft({ to, subject, body, threadId, attachments = [] }) {
+    const raw = await this._buildRawMessage({ to, subject, body, attachments })
     const res = await this._fetch('/drafts', {
       method: 'POST',
       body: JSON.stringify({ message: { raw, threadId } }),
@@ -278,8 +288,8 @@ export class GmailAdapter {
     return { ok: true, draftId: res.id }
   }
 
-  async sendReply({ to, subject, body, threadId }) {
-    const raw = this._buildRawMessage({ to, subject, body, threadId })
+  async sendReply({ to, subject, body, threadId, attachments = [] }) {
+    const raw = await this._buildRawMessage({ to, subject, body, attachments })
     const res = await this._fetch('/messages/send', {
       method: 'POST',
       body: JSON.stringify({ raw, threadId }),
@@ -287,22 +297,41 @@ export class GmailAdapter {
     return { ok: true, id: res.id }
   }
 
-  async sendMessage({ to, subject, body }) {
-    return this.sendReply({ to, subject, body })
+  async sendMessage({ to, subject, body, attachments = [] }) {
+    return this.sendReply({ to, subject, body, attachments })
   }
 
-  _buildRawMessage({ to, subject, body }) {
-    const lines = [
-      `To: ${to || ''}`,
-      `Subject: ${subject || ''}`,
-      'Content-Type: text/plain; charset="UTF-8"',
-      '',
-      body || '',
-    ]
-    const str = lines.join('\r\n')
+  async _buildRawMessage({ to, subject, body, attachments = [] }) {
+    let str
+    if (attachments.length === 0) {
+      str = [`To: ${to || ''}`, `Subject: ${encodeHeader(subject || '')}`, 'MIME-Version: 1.0', 'Content-Type: text/plain; charset="UTF-8"', '', body || ''].join('\r\n')
+    } else {
+      const boundary = `mail360_${Date.now()}_${Math.random().toString(36).slice(2)}`
+      const parts = [`To: ${to || ''}`, `Subject: ${encodeHeader(subject || '')}`, 'MIME-Version: 1.0', `Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: 8bit', '', body || '']
+      for (const file of attachments) {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        parts.push(`--${boundary}`, `Content-Type: ${file.type || 'application/octet-stream'}; name="${file.name}"`, 'Content-Transfer-Encoding: base64', `Content-Disposition: attachment; filename="${file.name}"`, '', bytesToBase64(bytes).replace(/.{1,76}/g, '$&\r\n'))
+      }
+      parts.push(`--${boundary}--`, '')
+      str = parts.join('\r\n')
+    }
     const bytes = new TextEncoder().encode(str)
-    let binary = ''
-    bytes.forEach((b) => { binary += String.fromCharCode(b) })
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+    return bytesToBase64(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
   }
+}
+
+function splitAddresses(value) {
+  return (value || '').split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+function bytesToBase64(bytes) {
+  let binary = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk))
+  return btoa(binary)
+}
+
+function encodeHeader(value) {
+  const bytes = new TextEncoder().encode(value)
+  return `=?UTF-8?B?${bytesToBase64(bytes)}?=`
 }

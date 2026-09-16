@@ -6,6 +6,7 @@ import {
   IconLink, IconPaperclip, IconSend, IconExternal, IconMail,
 } from './Icons'
 import { colorFromString } from '../utils/format'
+import AttachmentPicker from './AttachmentPicker'
 
 const FILE_COLORS = { pdf: '#D5484F', image: '#4453D6', sheet: '#2E9E77', doc: '#8890A6' }
 
@@ -30,6 +31,8 @@ export default function ReadingPane({
   const labelById = Object.fromEntries(labels.map((l) => [l.id, l.name]))
   const [replyText, setReplyText] = useState('')
   const [confirmSend, setConfirmSend] = useState(false)
+  const [replyAttachments, setReplyAttachments] = useState([])
+  const [showAttachments, setShowAttachments] = useState(false)
 
   if (loading) {
     return (
@@ -54,8 +57,9 @@ export default function ReadingPane({
   const handleSend = () => {
     if (!replyText.trim()) return
     if (!confirmSend) { setConfirmSend(true); return }
-    onSend(thread.id, replyText)
+    onSend(thread.id, replyText, replyAttachments)
     setReplyText('')
+    setReplyAttachments([])
     setConfirmSend(false)
   }
 
@@ -168,7 +172,7 @@ export default function ReadingPane({
         <div className="compose-bar__tools">
           <button aria-label="Mise en forme" title="Mise en forme"><IconBold /></button>
           <button aria-label="Insérer un lien" title="Insérer un lien"><IconLink /></button>
-          <button aria-label="Joindre un fichier" title="Joindre un fichier"><IconPaperclip /></button>
+          <button onClick={() => setShowAttachments((v) => !v)} aria-label="Joindre un fichier" title="Joindre un fichier"><IconPaperclip /></button>
           <button aria-label="Insérer un émoji" title="Insérer un émoji"><IconSmile /></button>
         </div>
         <button
@@ -181,6 +185,7 @@ export default function ReadingPane({
           <IconSend />
         </button>
       </div>
+      {showAttachments && <AttachmentPicker files={replyAttachments} onChange={setReplyAttachments} compact />}
       {confirmSend && (
         <div style={{ padding: '0 24px 12px', fontSize: 12.5, color: 'var(--c-text-faint)' }}>
           Cliquez de nouveau sur Envoyer pour confirmer — le message n'a pas encore été envoyé.

@@ -35,6 +35,7 @@ export default function MessageList({
   tab, onTabChange, unreadCount, onRefresh,
   selectedIds, onToggleSelect, onToggleStar, onQuickAction,
   activeFolderLabel, labels, filters, onFiltersChange, onSelectLabel,
+  onDoubleClickThread,
 }) {
   const [filtersOpen, setFiltersOpen] = React.useState(false)
   const labelById = React.useMemo(() => Object.fromEntries((labels || []).map((l) => [l.id, l])), [labels])
@@ -140,6 +141,7 @@ export default function MessageList({
                   tabIndex={0}
                   className={`message-row${t.unread ? ' is-unread' : ''}${selectedThreadId === t.id ? ' is-selected' : ''}`}
                   onClick={() => onSelectThread(t.id)}
+                  onDoubleClick={() => onDoubleClickThread?.(t.id)}
                   onKeyDown={(e) => { if (e.key === 'Enter') onSelectThread(t.id) }}
                 >
                   <div className="message-row__check-star">

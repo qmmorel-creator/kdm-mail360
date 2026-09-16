@@ -7,6 +7,7 @@ import ContextPanel from './components/ContextPanel'
 import SettingsModal from './components/SettingsModal'
 import ToastStack from './components/ToastStack'
 import ComposeModal from './components/ComposeModal'
+import NetworkView from './components/NetworkView'
 import { MockAdapter } from './adapters/MockAdapter'
 import { GmailAdapter } from './adapters/GmailAdapter'
 import { requestAccessToken, getStoredClientId, setStoredClientId } from './auth/googleAuth'
@@ -35,7 +36,12 @@ export default function App() {
   const [tab, setTab] = useState('priority')
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
-  const [filters, setFilters] = useState({ labelId: '', unread: '', attachment: false, starred: false, after: '', before: '' })
+  const [filters, setFilters] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('mail360-network-filters')) || {} } catch { return {} }
+  })
+  const normalizedFilters = { labelId: '', unread: '', attachment: false, starred: false, after: '', before: '', direction: '', recipientMode: '', category: '', minMessages: 1, ...filters }
+  const [workspaceView, setWorkspaceView] = useState(() => localStorage.getItem('mail360-workspace-view') || 'network')
+  const [readerModalOpen, setReaderModalOpen] = useState(false)
 
   const [threads, setThreads] = useState([])
   const [threadsLoading, setThreadsLoading] = useState(true)
@@ -129,6 +135,14 @@ export default function App() {
   }, [adapter, activeFolder, searchQuery, tab, filters, pushToast])
 
   useEffect(() => { loadThreads() }, [loadThreads])
+  useEffect(() => { localStorage.setItem('mail360-network-filters', JSON.stringify(normalizedFilters)) }, [filters])
+  useEffect(() => { localStorage.setItem('mail360-workspace-view', workspaceView) }, [workspaceView])
+  useEffect(() => {
+    if (!readerModalOpen) return undefined
+    const close = (event) => { if (event.key === 'Escape') setReaderModalOpen(false) }
+    window.addEventListener('keydown', close)
+    return () => window.removeEventListener('keydown', close)
+  }, [readerModalOpen])
 
   // ---------- Sélection d'un fil ----------
   const openThread = useCallback(async (id) => {
@@ -151,6 +165,16 @@ export default function App() {
       setThreadLoading(false)
     }
   }, [adapter, pushToast])
+
+  const openThreadModal = useCallback(async (id) => {
+    await openThread(id)
+    setReaderModalOpen(true)
+  }, [openThread])
+
+  const selectThread = useCallback((id) => {
+    if (workspaceView === 'network') setSelectedThreadId(id)
+    else openThread(id)
+  }, [workspaceView, openThread])
 
   // ---------- Actions optimistes ----------
   const applyLocal = (id, patch) => {
@@ -204,9 +228,9 @@ export default function App() {
     })
   }
 
-  const sendReply = async (threadId, body) => {
+  const sendReply = async (threadId, body, attachments = []) => {
     try {
-      await adapter.sendReply({ threadId, to: selectedThread?.from?.email, subject: 'Re: ' + (selectedThread?.subject || ''), body })
+      await adapter.sendReply({ threadId, to: selectedThread?.from?.email, subject: 'Re: ' + (selectedThread?.subject || ''), body, attachments })
       pushToast('Message envoyé.', false)
     } catch (e) {
       pushToast('L\u2019envoi a échoué : ' + e.message, false)
@@ -283,7 +307,7 @@ export default function App() {
   const unreadCount = useMemo(() => threads.filter((t) => t.unread).length, [threads])
 
   return (
-    <div className={`app-shell${contextOpen ? ' context-open' : ''} view-${mobileView}`}>
+    <div className={`app-shell app-shell--compact view-${mobileView}`}>
       <IconRail
         activeFolder={activeFolder}
         onSelectFolder={handleSelectFolder}
@@ -306,7 +330,8 @@ export default function App() {
         threads={threads}
         loading={threadsLoading}
         selectedThreadId={selectedThreadId}
-        onSelectThread={openThread}
+        onSelectThread={selectThread}
+        onDoubleClickThread={openThreadModal}
         searchQuery={searchInput}
         onSearchChange={setSearchInput}
         onSubmitSearch={() => setSearchQuery(searchInput)}
@@ -320,12 +345,17 @@ export default function App() {
         onQuickAction={quickAction}
         activeFolderLabel={FOLDER_LABELS[activeFolder] || 'Ce dossier'}
         labels={labels}
-        filters={filters}
+        filters={normalizedFilters}
         onFiltersChange={setFilters}
         onSelectLabel={selectLabel}
       />
 
-      <ReadingPane
+      <main className="workspace-pane">
+        <div className="workspace-switch" role="tablist" aria-label="Vue principale">
+          <button className={workspaceView === 'message' ? 'is-active' : ''} onClick={() => setWorkspaceView('message')}>Message</button>
+          <button className={workspaceView === 'network' ? 'is-active' : ''} onClick={() => setWorkspaceView('network')}>Réseau</button>
+        </div>
+        {workspaceView === 'network' ? <NetworkView threads={threads} loading={threadsLoading} filters={normalizedFilters} onFiltersChange={setFilters} labels={labels} /> : <ReadingPane
         thread={selectedThread}
         loading={threadLoading}
         mode={mode}
@@ -337,16 +367,17 @@ export default function App() {
         onOpenContext={() => setContextOpen(true)}
         labels={labels}
         onSelectLabel={selectLabel}
-      />
+        />}
+      </main>
 
-      <ContextPanel
-        thread={selectedThread}
-        tab={contextTab}
-        onTabChange={setContextTab}
-        onClose={() => setContextOpen(false)}
-        onCreateTask={createNexoraTask}
-        isOpen={contextOpen}
-      />
+      {readerModalOpen && (
+        <div className="reader-overlay" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setReaderModalOpen(false) }}>
+          <div className="reader-modal" role="dialog" aria-modal="true" aria-label="Lecture du message">
+            <button className="reader-modal__close" onClick={() => setReaderModalOpen(false)} aria-label="Fermer">×</button>
+            <ReadingPane thread={selectedThread} loading={threadLoading} mode={mode} onBack={() => setReaderModalOpen(false)} onQuickAction={quickAction} onToggleStar={toggleStar} onSend={sendReply} contextOpen onOpenContext={() => {}} labels={labels} onSelectLabel={selectLabel} />
+          </div>
+        </div>
+      )}
 
       {settingsOpen && (
         <SettingsModal

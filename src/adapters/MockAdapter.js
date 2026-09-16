@@ -43,6 +43,10 @@ export class MockAdapter {
     if (filters.starred) list = list.filter((t) => t.starred)
     if (filters.after) list = list.filter((t) => t.date.slice(0, 10) >= filters.after)
     if (filters.before) list = list.filter((t) => t.date.slice(0, 10) <= filters.before)
+    if (filters.direction) list = list.filter((t) => (t.direction || (t.folder === 'sent' ? 'sent' : 'received')) === filters.direction)
+    if (filters.recipientMode === 'cc') list = list.filter((t) => t.cc?.length)
+    if (filters.recipientMode === 'to') list = list.filter((t) => !t.cc?.length)
+    if (filters.minMessages > 1) list = list.filter((t) => (t.messageCount || 1) >= filters.minMessages)
     if (query) {
       const q = query.toLowerCase()
       list = this.parseSearch(list, q)
@@ -111,12 +115,12 @@ export class MockAdapter {
     return { ok: true, draftId: 'draft_' + Date.now() }
   }
 
-  async sendReply({ threadId, body }) {
+  async sendReply({ threadId, body, attachments = [] }) {
     await delay(400)
     return { ok: true }
   }
 
-  async sendMessage() {
+  async sendMessage({ attachments = [] } = {}) {
     await delay(400)
     return { ok: true, demo: true }
   }
