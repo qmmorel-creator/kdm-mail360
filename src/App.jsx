@@ -6,6 +6,7 @@ import ReadingPane from './components/ReadingPane'
 import ContextPanel from './components/ContextPanel'
 import SettingsModal from './components/SettingsModal'
 import ToastStack from './components/ToastStack'
+import ComposeModal from './components/ComposeModal'
 import { MockAdapter } from './adapters/MockAdapter'
 import { GmailAdapter } from './adapters/GmailAdapter'
 import { requestAccessToken, getStoredClientId, setStoredClientId } from './auth/googleAuth'
@@ -34,6 +35,7 @@ export default function App() {
   const [tab, setTab] = useState('priority')
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [filters, setFilters] = useState({ labelId: '', unread: '', attachment: false, starred: false, after: '', before: '' })
 
   const [threads, setThreads] = useState([])
   const [threadsLoading, setThreadsLoading] = useState(true)
@@ -51,6 +53,8 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [authError, setAuthError] = useState('')
+  const [composeOpen, setComposeOpen] = useState(false)
+  const [sending, setSending] = useState(false)
 
   const [toasts, setToasts] = useState([])
 
@@ -88,19 +92,41 @@ export default function App() {
     return () => { cancelled = true }
   }, [adapter])
 
+  // Restaure la session Google sans réafficher le consentement. Le jeton
+  // reste uniquement en mémoire ; seul le Client ID public est persistant.
+  useEffect(() => {
+    const clientId = getStoredClientId()
+    if (!clientId) return
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      try {
+        const token = await requestAccessToken(clientId, { silent: true })
+        const gmail = new GmailAdapter(token)
+        await gmail.getProfile()
+        if (!cancelled) { setAdapter(gmail); setMode('live') }
+      } catch {
+        // Absence de session Google : le mode démo reste disponible.
+      }
+    }, 250)
+    return () => { cancelled = true; clearTimeout(timer) }
+  }, [])
+
   // ---------- Chargement de la liste des fils ----------
   const loadThreads = useCallback(async () => {
     setThreadsLoading(true)
     try {
-      const list = await adapter.listThreads({ folder: activeFolder, query: searchQuery, tab })
+      const list = await adapter.listThreads({ folder: activeFolder, query: searchQuery, tab, filters })
       setThreads(list)
+      const [freshLabels, freshCounts] = await Promise.all([adapter.listLabels(), adapter.listFolderCounts()])
+      setLabels(freshLabels)
+      setFolderCounts(freshCounts)
     } catch (e) {
       pushToast('Erreur de chargement des messages : ' + e.message, false)
       setThreads([])
     } finally {
       setThreadsLoading(false)
     }
-  }, [adapter, activeFolder, searchQuery, tab, pushToast])
+  }, [adapter, activeFolder, searchQuery, tab, filters, pushToast])
 
   useEffect(() => { loadThreads() }, [loadThreads])
 
@@ -114,8 +140,10 @@ export default function App() {
       const t = await adapter.getThread(id)
       setSelectedThread(t)
       if (t.unread) {
-        adapter.setUnread(id, false).catch(() => {})
-        setThreads((prev) => prev.map((x) => (x.id === id ? { ...x, unread: false } : x)))
+        await adapter.setUnread(id, false)
+        const confirmed = await adapter.getThread(id)
+        setSelectedThread(confirmed)
+        setThreads((prev) => prev.map((x) => (x.id === id ? { ...x, unread: confirmed.unread } : x)))
       }
     } catch (e) {
       pushToast('Impossible d\u2019ouvrir ce message : ' + e.message, false)
@@ -159,6 +187,8 @@ export default function App() {
         const nextUnread = !(before?.unread)
         applyLocal(id, { unread: nextUnread })
         await adapter.setUnread(id, nextUnread)
+        const confirmed = await adapter.getThread(id)
+        applyLocal(id, { unread: confirmed.unread, labels: confirmed.labels })
       }
     } catch (e) {
       if (before) setThreads((prev) => (prev.some((t) => t.id === id) ? prev : [...prev, before]))
@@ -195,12 +225,31 @@ export default function App() {
   }
 
   const handleSelectFolder = (folder, labelId) => {
-    if (folder === '__compose__') { pushToast('Ouverture d\u2019un nouveau message…', false); return }
+    if (folder === '__compose__') { setComposeOpen(true); return }
     setActiveFolder(folder)
+    setFilters((prev) => ({ ...prev, labelId: labelId || '' }))
     setTab('priority')
     setSelectedThreadId(null)
     setSelectedThread(null)
     setNavOpen(false)
+  }
+
+  const selectLabel = (labelId) => {
+    setFilters((prev) => ({ ...prev, labelId }))
+    setSelectedThreadId(null)
+    setSelectedThread(null)
+  }
+
+  const sendNewMessage = async (message) => {
+    setSending(true)
+    try {
+      const result = await adapter.sendMessage(message)
+      pushToast(result.demo ? 'Message simulé en mode démonstration.' : 'Message envoyé.', false)
+      setComposeOpen(false)
+      if (!result.demo) await loadThreads()
+    } catch (e) {
+      pushToast('L\u2019envoi a échoué : ' + e.message, false)
+    } finally { setSending(false) }
   }
 
   const handleConnectGmail = async (clientId) => {
@@ -234,7 +283,7 @@ export default function App() {
   const unreadCount = useMemo(() => threads.filter((t) => t.unread).length, [threads])
 
   return (
-    <div className={`app-shell${contextOpen ? '' : ''} view-${mobileView}`}>
+    <div className={`app-shell${contextOpen ? ' context-open' : ''} view-${mobileView}`}>
       <IconRail
         activeFolder={activeFolder}
         onSelectFolder={handleSelectFolder}
@@ -245,6 +294,7 @@ export default function App() {
       <NavSidebar
         mode={mode}
         activeFolder={activeFolder}
+        activeLabelId={filters.labelId}
         onSelectFolder={handleSelectFolder}
         folderCounts={folderCounts}
         labels={labels}
@@ -269,6 +319,10 @@ export default function App() {
         onToggleStar={toggleStar}
         onQuickAction={quickAction}
         activeFolderLabel={FOLDER_LABELS[activeFolder] || 'Ce dossier'}
+        labels={labels}
+        filters={filters}
+        onFiltersChange={setFilters}
+        onSelectLabel={selectLabel}
       />
 
       <ReadingPane
@@ -281,6 +335,8 @@ export default function App() {
         onSend={sendReply}
         contextOpen={contextOpen}
         onOpenContext={() => setContextOpen(true)}
+        labels={labels}
+        onSelectLabel={selectLabel}
       />
 
       <ContextPanel
@@ -303,6 +359,8 @@ export default function App() {
           error={authError}
         />
       )}
+
+      {composeOpen && <ComposeModal onClose={() => setComposeOpen(false)} onSend={sendNewMessage} sending={sending} />}
 
       <ToastStack toasts={toasts} onUndo={undoToast} />
     </div>

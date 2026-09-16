@@ -31,11 +31,18 @@ export class MockAdapter {
     return counts
   }
 
-  async listThreads({ folder = 'inbox', query = '', tab = 'priority' } = {}) {
+  async listThreads({ folder = 'inbox', query = '', tab = 'priority', filters = {} } = {}) {
     await delay(320)
     let list = this.threads.filter((t) => t.folder === folder)
     if (tab === 'unread') list = list.filter((t) => t.unread)
     if (tab === 'attachments') list = list.filter((t) => t.attachments?.length)
+    if (filters.labelId) list = list.filter((t) => t.labels?.includes(filters.labelId))
+    if (filters.unread === 'unread') list = list.filter((t) => t.unread)
+    if (filters.unread === 'read') list = list.filter((t) => !t.unread)
+    if (filters.attachment) list = list.filter((t) => t.attachments?.length)
+    if (filters.starred) list = list.filter((t) => t.starred)
+    if (filters.after) list = list.filter((t) => t.date.slice(0, 10) >= filters.after)
+    if (filters.before) list = list.filter((t) => t.date.slice(0, 10) <= filters.before)
     if (query) {
       const q = query.toLowerCase()
       list = this.parseSearch(list, q)
@@ -107,5 +114,10 @@ export class MockAdapter {
   async sendReply({ threadId, body }) {
     await delay(400)
     return { ok: true }
+  }
+
+  async sendMessage() {
+    await delay(400)
+    return { ok: true, demo: true }
   }
 }

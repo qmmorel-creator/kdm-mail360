@@ -11,7 +11,7 @@ const folderItems = [
   { id: 'trash', label: 'Corbeille', icon: IconTrash, countKey: 'trash' },
 ]
 
-export default function NavSidebar({ mode, activeFolder, onSelectFolder, folderCounts, labels, profile, onOpenSettings }) {
+export default function NavSidebar({ mode, activeFolder, activeLabelId, onSelectFolder, folderCounts, labels, profile, onOpenSettings }) {
   const usedRatio = profile?.storageUsedGb && profile?.storageTotalGb
     ? Math.min(100, (profile.storageUsedGb / profile.storageTotalGb) * 100)
     : null
@@ -60,7 +60,7 @@ export default function NavSidebar({ mode, activeFolder, onSelectFolder, folderC
       <ul className="nav-list">
         {labels?.map((l) => (
           <li key={l.id}>
-            <button className="nav-item" onClick={() => onSelectFolder('inbox', l.id)}>
+            <button className={`nav-item${activeLabelId === l.id ? ' is-active' : ''}`} onClick={() => onSelectFolder('inbox', l.id)} aria-pressed={activeLabelId === l.id}>
               <span className="label-dot" style={{ background: l.color }} />
               <span className="nav-item__label">{l.name}</span>
               {!!l.count && <span className="nav-item__count">{l.count}</span>}
