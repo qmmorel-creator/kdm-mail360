@@ -1,0 +1,56 @@
+:root {
+  /* Palette */
+  --c-bg: #F7F7FB;
+  --c-surface: #FFFFFF;
+  --c-surface-raised: #FFFFFF;
+  --c-text: #101A33;
+  --c-text-dim: #4A5470;
+  --c-text-faint: #8890A6;
+  --c-border: #E9EAF1;
+  --c-border-strong: #DBDDE8;
+  --c-accent: #4453D6;
+  --c-accent-hover: #3A47BE;
+  --c-accent-soft: #EDEFFC;
+  --c-accent-soft-strong: #E1E4FA;
+  --c-mint: #2E9E77;
+  --c-mint-soft: #E7F6EF;
+  --c-amber: #C98A2C;
+  --c-amber-soft: #FBF1DF;
+  --c-danger: #D5484F;
+  --c-danger-soft: #FBEAEA;
+  --c-unread-dot: #4453D6;
+
+  /* Radius */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 18px;
+
+  /* Spacing (8px grid) */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  /* Shadow */
+  --shadow-xs: 0 1px 2px rgba(16, 26, 51, 0.04);
+  --shadow-sm: 0 2px 8px rgba(16, 26, 51, 0.06);
+  --shadow-md: 0 6px 20px rgba(16, 26, 51, 0.08);
+
+  /* Motion */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur-base: 160ms;
+  --dur-slow: 180ms;
+
+  /* Type */
+  --font-ui: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
